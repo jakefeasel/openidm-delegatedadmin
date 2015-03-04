@@ -237,9 +237,89 @@ var httpAccessConfig =
             "roles"     : "openidm-admin",
             "methods"   : "read,create,update,delete",
             "actions"   : ""
+        },
+
+
+        // Org Admins
+        {  
+           "pattern"    : "endpoint/linkedView/managed/user/*",
+           "roles"      : "openidm-org-admin",
+           "methods"    : "read",
+           "actions"    : "*",
+           "customAuthz" : "restrictedToOwnOrg()"
+        },
+        {  
+           "pattern"    : "managed/user",
+           "roles"      : "openidm-org-admin",
+           "methods"    : "create",
+           "actions"    : "*",
+           "customAuthz" : "restrictedToOwnOrg() && managedUserRestrictedToAllowedProperties('"+allowedPropertiesForManagedUser+"')"
+        },
+        {  
+           "pattern"    : "managed/user/*",
+           "roles"      : "openidm-org-admin",
+           "methods"    : "create,read,update,delete,patch", // query is only available through jqgrid endpoint
+           "actions"    : "*",
+           "customAuthz" : "restrictedToOwnOrg() && managedUserRestrictedToAllowedProperties('"+allowedPropertiesForManagedUser+"')"
+        },
+        {  
+           "pattern"    : "managed/user",
+           "roles"      : "openidm-org-admin",
+           "methods"    : "query",
+           "actions"    : "*",
+           "customAuthz" : "restrictedToQueries(['for-userName']) && filterQueryByOrg()"
+        },
+        {  
+           "pattern"    : "managed/role",
+           "roles"      : "openidm-org-admin",
+           "methods"    : "query",
+           "actions"    : "*"
+        },
+        {  
+           "pattern"    : "endpoint/jqgrid",
+           "roles"      : "openidm-org-admin",
+           "methods"    : "query",
+           "actions"    : "*",
+           "customAuthz" : "restrictedToQueries(['get-managed-users']) && request.additionalParameters.resource === 'managed/user'"
         }
     ] 
 };
 
 // Additional custom authorization functions go here
 
+function restrictedToOwnOrg() {
+    var _ = require("lib/lodash"),
+        userData = openidm.read(context.security.authorizationId.component + '/' + context.security.authorizationId.id),
+        existingData;
+
+    if (!userData.org) {
+        return false;
+    }
+
+    if (request.method === "create") {
+        request.content.org = userData.org;
+    } else {
+        existingData = openidm.read(request.resourceName);
+        if (existingData.org !== userData.org) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function restrictedToQueries(queryArray) {
+    if (request.method !== "query") {
+        return false;
+    }
+
+    return (queryArray.indexOf(request.queryId) !== -1);
+}
+
+function filterQueryByOrg() {
+    var userData = openidm.read(context.security.authorizationId.component + '/' + context.security.authorizationId.id);
+
+    request.queryId = request.queryId + '-for-org';
+    request.additionalParameters.org = userData.org;
+    return true;
+}
